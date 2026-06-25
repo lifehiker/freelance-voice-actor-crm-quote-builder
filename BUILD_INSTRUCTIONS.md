@@ -5,7 +5,7 @@
 - **App Name:** freelance-voice-actor-crm-quote-builder
 - **Repository:** freelance-voice-actor-crm-quote-builder
 - **Tech Stack:** Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui
-- **Description:** A business management web app for freelance voice actors to track auditions, casting submissions, callbacks, usage terms, rates, quotes, invoices, and follow-ups. It helps calculate commercial usage pricing by region, term length, media type, broadcast rights, buyouts, and revision policies.
+- **Description:** freelance-voice-actor-crm-quote-builder
 
 ---
 
@@ -1460,12 +1460,82 @@ AUTH_SECRET="your-secret-here"  # generate with: openssl rand -base64 32
 
 ## Key Implementation Notes
 
+### Dependency Policy (READ THIS FIRST — applies to ALL deps, not just new ones)
+
+Forge always moves **forward** on dependency versions. Never downgrade a foundational dep to work around a build or runtime error — refactor the calling code, or regenerate the affected module from scratch, instead.
+
+**Why:** apps Forge ships are MVPs with light surface area. The cost of refactoring against a current major is small; the cost of dragging a stale dep across the fleet is large (CVEs, eventual hard-forced upgrades, and per-app drift like the Prisma 5/6/7 fleet incident).
+
+When a dep upgrade breaks a build:
+1. **First**: refactor the calling code to match the new API. Read the dep's migration guide; rewrite the affected file(s).
+2. **If that's impractical**: regenerate the affected module from scratch using the latest dep's idioms.
+3. **Last resort**: regenerate the whole app from scratch with the current foundational stack. Do NOT downgrade.
+
+Specific minimums Forge enforces (do not go below these in any new build or change):
+- **Next.js:** latest stable (currently 16.x). Always use App Router.
+- **React:** latest stable (currently 19.2+).
+- **Prisma:** latest stable major (currently **7+**). See the Database section for the required pattern.
+- **Node:** 20-slim in the Dockerfile (do not change).
+
 ### Database (only if PRD requires persistence)
-- Use **SQLite** via Prisma: `provider = "sqlite"`, `url = env("DATABASE_URL")`
-- `DATABASE_URL` defaults to `file:/data/app.db` in the Dockerfile — no Coolify config needed
-- For local dev: `DATABASE_URL="file:./dev.db"` in `.env.local`
-- Run `npx prisma db push` after schema changes
-- **Do NOT use PostgreSQL** — no PostgreSQL server is provisioned in the deployment environment
+
+Forge standardises on **Prisma 7 + SQLite + the better-sqlite3 driver adapter**. This is the only supported pattern.
+
+**Required deps in `package.json`:**
+```
+"@prisma/client": "^7.0.0",
+"@prisma/adapter-better-sqlite3": "^7.0.0",
+"prisma": "^7.0.0"
+```
+
+**`prisma/schema.prisma` (datasource block, no url):**
+```prisma
+datasource db {
+  provider = "sqlite"
+}
+```
+
+The `url` goes in `prisma.config.ts` (Prisma 7 moved it out of the schema):
+
+**`prisma.config.ts` at repo root:**
+```ts
+import { defineConfig } from '@prisma/config';
+
+export default defineConfig({
+  datasource: {
+    url: process.env.DATABASE_URL ?? 'file:./dev.db',
+  },
+});
+```
+
+**PrismaClient construction (in `src/lib/db.ts` or equivalent — Prisma 7 REQUIRES `adapter`):**
+```ts
+import { PrismaClient } from "@prisma/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" }),
+  });
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+```
+
+Without the adapter, Prisma 7 fails at `next build` with `PrismaClientConstructorValidationError: Using engine type "client" requires either "adapter" or "accelerateUrl"`.
+
+**Runtime:**
+- `DATABASE_URL` defaults to `file:/data/app.db` in the Dockerfile — no Coolify config needed.
+- For local dev: `DATABASE_URL="file:./dev.db"` in `.env.local`.
+- Run `npx prisma db push` after schema changes.
+- The Dockerfile CMD runs `prisma db push --url "$DATABASE_URL"` at container start to sync the schema.
+
+**Forbidden:**
+- **Do NOT use PostgreSQL** — no Postgres server is provisioned. `provider = "postgresql"` is a build failure even if you intended SQLite at runtime; Prisma 7's strict adapter check rejects the mismatch.
+- **Do NOT pin Prisma to `^5` or `^6`** to dodge the adapter requirement. See the Dependency Policy above — refactor instead of downgrading.
+- **Do NOT keep `url = env("DATABASE_URL")` inside `schema.prisma`** — it belongs in `prisma.config.ts` in Prisma 7.
 
 ### Authentication (only if PRD requires user login)
 - Use **NextAuth v5** with the **Credentials provider** (email + password)

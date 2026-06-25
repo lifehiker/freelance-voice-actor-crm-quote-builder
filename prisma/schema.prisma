@@ -1,0 +1,227 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  passwordHash   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  clients          Client[]
+  projects         Project[]
+  auditions        Audition[]
+  quotes           Quote[]
+  invoices         Invoice[]
+  usageTemplates   UsageTemplate[]
+  reminders        Reminder[]
+  businessSettings BusinessSettings?
+  subscription     Subscription?
+  analyticsEvents  AnalyticsEvent[]
+}
+
+model Subscription {
+  id                     String    @id @default(cuid())
+  userId                 String    @unique
+  stripeCustomerId       String?
+  stripeSubscriptionId   String?
+  stripePriceId          String?
+  stripeCurrentPeriodEnd DateTime?
+  plan                   String    @default("free")
+  status                 String    @default("active")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  company   String?
+  email     String?
+  phone     String?
+  website   String?
+  source    String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects  Project[]
+  auditions Audition[]
+  quotes    Quote[]
+  invoices  Invoice[]
+}
+
+model Project {
+  id         String    @id @default(cuid())
+  userId     String
+  clientId   String?
+  name       String
+  type       String?
+  status     String    @default("lead")
+  dueDate    DateTime?
+  notes      String?
+  followUpAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client    Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  auditions Audition[]
+  quotes    Quote[]
+}
+
+model Audition {
+  id            String    @id @default(cuid())
+  userId        String
+  clientId      String?
+  projectId     String?
+  castingSource String?
+  role          String?
+  submittedAt   DateTime?
+  callbackAt    DateTime?
+  status        String    @default("planned")
+  notes         String?
+  followUpAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model Quote {
+  id             String    @id @default(cuid())
+  userId         String
+  clientId       String?
+  projectId      String?
+  quoteNumber    String
+  status         String    @default("draft")
+  sessionFee     Float     @default(0)
+  mediaType      String?
+  usageRegion    String?
+  usageTerm      String?
+  isBuyout       Boolean   @default(false)
+  revisionPolicy String?
+  pickupPolicy   String?
+  usageTerms     String?
+  rushFee        Float     @default(0)
+  discount       Float     @default(0)
+  tax            Float     @default(0)
+  subtotal       Float     @default(0)
+  total          Float     @default(0)
+  expiresAt      DateTime?
+  followUpAt     DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client    Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project   Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  lineItems QuoteLineItem[]
+  invoices  Invoice[]
+}
+
+model QuoteLineItem {
+  id          String @id @default(cuid())
+  quoteId     String
+  description String
+  quantity    Float  @default(1)
+  unitPrice   Float  @default(0)
+  amount      Float  @default(0)
+  sortOrder   Int    @default(0)
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
+
+model UsageTemplate {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  category  String?
+  content   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id            String    @id @default(cuid())
+  userId        String
+  quoteId       String?
+  clientId      String?
+  invoiceNumber String
+  status        String    @default("draft")
+  issueDate     DateTime  @default(now())
+  dueDate       DateTime?
+  amount        Float     @default(0)
+  notes         String?
+  followUpAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quote  Quote?  @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+}
+
+model Reminder {
+  id         String   @id @default(cuid())
+  userId     String
+  entityType String
+  entityId   String
+  dueAt      DateTime
+  message    String?
+  sent       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BusinessSettings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  businessName          String?
+  displayName           String?
+  email                 String?
+  website               String?
+  address               String?
+  logoUrl               String?
+  defaultPaymentTerms   String?
+  defaultRevisionPolicy String?
+  defaultPickupPolicy   String?
+  quotePrefix           String   @default("Q")
+  invoicePrefix         String   @default("INV")
+  nextQuoteNumber       Int      @default(1)
+  nextInvoiceNumber     Int      @default(1)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  userId     String?
+  event      String
+  properties String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
